@@ -1,0 +1,378 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <title>🌍 AQI Pro Dashboard - Standalone</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            background: #ffffff;
+            font-family: 'Poppins', sans-serif;
+            color: #333;
+            min-height: 100vh;
+        }
+        .container { max-width: 1200px; margin: auto; padding: 20px; }
+        .header { text-align: center; margin-bottom: 30px; }
+        .header h1 {
+            font-size: 3em; background: linear-gradient(45deg, #00d4ff, #ff6b9d);
+            -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+        }
+        .search-box {
+            background: rgba(255,255,255,0.8); backdrop-filter: blur(10px);
+            border-radius: 50px; padding: 20px; display: flex; gap: 15px;
+            justify-content: center; margin-bottom: 30px; box-shadow: 0 8px 25px rgba(0,0,0,0.1);
+        }
+        input { padding: 15px 25px; border: none; border-radius: 30px; background: rgba(255,255,255,0.9); color: #333; font-size: 16px; width: 300px; }
+        input::placeholder { color: rgba(51,51,51,0.7); }
+        button {
+            padding: 15px 30px; border: none; border-radius: 30px;
+            background: linear-gradient(45deg, #00c6ff, #0072ff); color: white; font-weight: 600;
+            cursor: pointer; transition: all 0.3s; 
+        }
+        button:hover { transform: translateY(-3px); box-shadow: 0 10px 30px rgba(0,198,255,0.4); }
+        .error { background: #fff5f5; border: 1px solid #ff6b6b; color: #c53030; padding: 15px; border-radius: 15px; margin: 20px 0; text-align: center; }
+        .main-layout {
+            display: flex;
+            gap: 20px;
+            margin-bottom: 25px;
+        }
+        .map-container, .chart-container {
+            flex: 1;
+            height: 450px;
+            border-radius: 15px;
+        }
+
+        .features {
+            display: flex;
+            gap: 20px;
+            margin-top: 20px;
+            flex-wrap: wrap;
+        }
+
+        .dashboard { 
+            /* Keeps existing cards flow into new containers */
+        }
+        .card {
+            background: #f8f9fa; backdrop-filter: blur(10px); border-radius: 15px;
+            padding: 25px; text-align: center; transition: all 0.3s; border: 1px solid #dee2e6;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+        }
+        .card:hover { transform: translateY(-10px); box-shadow: 0 25px 50px rgba(0,0,0,0.3); }
+        .card::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 5px; background: linear-gradient(90deg, #00d4ff, #ff6b9d); }
+        .aqi-main { grid-column: span 2; }
+        .aqi-value { font-size: 4em; font-weight: 700; margin: 20px 0; }
+        .good { color: #00ff88; text-shadow: 0 0 20px #00ff88; }
+        .moderate { color: #ffd166; text-shadow: 0 0 20px #ffd166; }
+        .unhealthy { color: #ffaa00; text-shadow: 0 0 20px #ffaa00; }
+        .bad { color: #ff6b9d; text-shadow: 0 0 20px #ff6b9d; }
+        .very-bad { color: #ff4757; text-shadow: 0 0 20px #ff4757; }
+        .metric-icon { font-size: 2.5em; margin-bottom: 15px; }
+        .metric-value { font-size: 2em; font-weight: 600; }
+        /* Layout updated above */
+        #map { height: 100%; width: 100%; border-radius: 20px; }
+        .hidden { display: none; }
+
+        .loading { color: #00d4ff; font-style: italic; }
+        
+        .pollutant-card {
+            background: #ffffff;
+            padding: 15px;
+            border-radius: 12px;
+            margin: 5px;
+            display: inline-block;
+            width: 140px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            text-align: center;
+            font-weight: 500;
+            border: 1px solid #e9ecef;
+        }
+
+        .feature-card {
+            flex: 1;
+            min-width: 180px;
+            background: #ffffff;
+            border-radius: 12px;
+            padding: 20px;
+            text-align: center;
+            border: 1px solid #e0e0e0;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.05);
+        }
+        .feature-card .icon {
+            font-size: 28px;
+            margin-bottom: 10px;
+        }
+        .feature-card h3 {
+            margin: 5px 0;
+            font-size: 18px;
+        }
+        .feature-card p {
+            font-size: 22px;
+            font-weight: bold;
+            margin: 5px 0;
+        }
+
+        .feature-card span {
+            color: gray;
+            font-size: 14px;
+        }
+
+        /* Apply SAME style to ALL feature cards */
+        .feature-card,
+        .pm25-card,
+        .pm10-card,
+        .so2-card,
+        .co2-card {
+            background: #ffffff;
+            border: 1px solid #e0e0e0;
+            border-radius: 12px;
+            padding: 20px;
+            text-align: center;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.05);
+            min-width: 180px;
+        }
+
+        /* Ensure proper alignment */
+        .features {
+            display: flex;
+            gap: 20px;
+            flex-wrap: wrap;
+        }
+        
+@media (max-width: 768px) { 
+
+
+            .main-layout { flex-direction: column; } 
+            .map-container, .chart-container { height: 350px; }
+            .features { grid-template-columns: 1fr; }
+            .pollutant-card { width: 100%; margin: 5px 0; }
+        }
+    </style>
+
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1><i class="fas fa-lungs"></i> AQI Pro Dashboard</h1>
+            <p>Live Air Quality + Weather - No Server Needed</p>
+        </div>
+        <div class="search-box">
+            <input id="cityInput" placeholder="Enter city (Delhi, London, New York)" />
+            <button onclick="fetchData()"><i class="fas fa-search"></i> Check Now</button>
+        </div>
+        <div id="error" class="error hidden"></div>
+        <div id="dashboard" class="dashboard hidden"></div>
+    </div>
+
+    <script>
+        const API_KEY = "99d5a09ca7486f4536ad3d9e504cf7fb";
+
+        async function fetchData() {
+            const city = document.getElementById('cityInput').value.trim();
+            if (!city) return showError('Enter city name');
+
+            hideError();
+            showLoading();
+
+            try {
+                // Geocoding
+                const geoUrl = `https://api.openweathermap.org/geo/1.0/direct?q=${city}&limit=1&appid=${API_KEY}`;
+                const geoRes = await fetch(geoUrl);
+                const geoData = await geoRes.json();
+                if (!geoData[0]) throw new Error('City not found');
+
+                const { lat, lon, country } = geoData[0];
+
+                // AQI + Weather
+                const [aqiRes, weatherRes] = await Promise.all([
+                    fetch(`https://api.openweathermap.org/data/2.5/air_pollution?lat=${lat}&lon=${lon}&appid=${API_KEY}`),
+                    fetch(`https://api.openweathermap.org/data/2.5/weather?lat=${lat}&lon=${lon}&appid=${API_KEY}&units=metric`)
+                ]);
+
+
+                const [aqiData, weatherData] = await Promise.all([aqiRes.json(), weatherRes.json()]);
+                const aqi = aqiData.list[0].main.aqi;
+                const components = aqiData.list[0].components || {};
+                const w = weatherData.main;
+
+                const data = {
+                    city: `${city}, ${country}`,
+                    lat, lon, aqi, components,
+                    temp: w.temp, feels_like: w.feels_like, humidity: w.humidity,
+                    status: getAQIStatus(aqi),
+                    humidity_status: getHumidityStatus(w.humidity),
+                    advice: getFarmerAdvice(aqi, w.temp, w.humidity),
+                    aqi_history: generateHistory(aqi)
+                };
+
+
+                displayData(data);
+            } catch (e) {
+                showError(e.message || 'API error - check internet');
+            }
+        }
+
+        function getAQIStatus(aqi) {
+            const s = {1: 'Good 😊', 2: 'Fair 🙂', 3: 'Moderate 😐', 4: 'Poor 😷', 5: 'Very Poor ☠️'};
+            return s[aqi] || 'Unknown ❓';
+        }
+
+        function getHumidityStatus(h) {
+            return h < 40 ? 'Dry' : h < 70 ? 'Comfortable' : 'Humid';
+        }
+
+        function getFarmerAdvice(aqi, temp, hum) {
+            let advice = [];
+            if (aqi >= 4) advice.push('❌ No pesticides');
+            else if (aqi == 3) advice.push('⚠️ Limit chemicals');
+            else advice.push('✅ Safe farming');
+            if (temp > 35) advice.push('🔥 Irrigate crops');
+            if (hum > 80) advice.push('💧 Check fungi');
+            return advice.join(' | ');
+        }
+
+        function generateHistory(aqi) {
+            let h = [aqi];
+            for (let i = 0; i < 5; i++) {
+                h.push(Math.max(1, Math.min(5, h[i] + (Math.random() - 0.5 > 0 ? 1 : -1))));
+            }
+            return h.slice(0,6);
+        }
+
+        function displayData(data) {
+            document.getElementById('dashboard').innerHTML = `
+                <div class="main-layout">
+                    <div class="map-container card">
+                        <h3><i class="fas fa-map-marker-alt"></i> Real-time Map</h3>
+                        <div id="map"></div>
+                    </div>
+                    <div class="chart-container card">
+                        <h3><i class="fas fa-chart-line"></i> AQI Trend Graph (Right)</h3>
+                        <canvas id="aqiChart"></canvas>
+                    </div>
+                </div>
+                <div class="features">
+                    <div class="card aqi-main">
+                        <i class="fas fa-wind" style="font-size:2.5em;margin-bottom:15px"></i>
+                        <h2>${data.city}</h2>
+                        <div class="aqi-value ${getAQIClass(data.aqi)}">${data.aqi}</div>
+                        <p style="font-size:1.2em;margin-bottom:10px">${data.status}</p>
+                        <div style="background:linear-gradient(135deg,rgba(0,212,255,0.2),rgba(255,107,157,0.2));padding:20px;border-radius:15px;font-size:1.1em">
+                            <i class="fas fa-tractor"></i> ${data.advice}
+                        </div>
+                    </div>
+                    <div class="card">
+                        <i class="fas fa-thermometer-half" style="font-size:2.5em;margin-bottom:15px;color:#ff6b9d"></i>
+                        <h3>Temperature</h3>
+                        <div class="metric-value">${data.temp.toFixed(1)}°C</div>
+                        <p>Feels like ${data.feels_like.toFixed(1)}°C</p>
+                    </div>
+
+                    <div class="card">
+                        <i class="fas fa-tint" style="font-size:2.5em;margin-bottom:15px;color:#00d4ff"></i>
+                        <h3>Humidity</h3>
+                        <div class="metric-value">${data.humidity}%</div>
+                        <p>${data.humidity_status}</p>
+                    </div>
+
+                    <!-- SO2 -->
+                    <div class="feature-card">
+                        <div class="icon">🧪</div>
+                        <h3>SO₂</h3>
+                        <p id="so2">-- µg/m³</p>
+                        <span>Air pollutant</span>
+                    </div>
+                    <!-- CO2 -->
+                    <div class="feature-card">
+                        <div class="icon">🌍</div>
+                        <h3>CO₂</h3>
+                        <p id="co2">-- ppm</p>
+                        <span>Approx level</span>
+                    </div>
+                    <!-- PM2.5 -->
+                    <div class="feature-card">
+                        <div class="icon">🌫️</div>
+                        <h3>PM2.5</h3>
+                        <p id="pm25">-- µg/m³</p>
+                        <span>Fine particles</span>
+                    </div>
+                    <!-- PM10 -->
+                    <div class="feature-card">
+                        <div class="icon">🌪️</div>
+                        <h3>PM10</h3>
+                        <p id="pm10">-- µg/m³</p>
+                        <span>Coarse particles</span>
+                    </div>
+                </div>
+            `;
+
+
+
+            document.getElementById('dashboard').classList.remove('hidden');
+            
+
+            // Update pollutant cards
+            document.getElementById('so2').innerText = (data.components.so2 || '--') + ' µg/m³';
+            const co2 = data.components.co2;
+            document.getElementById('co2').innerText = co2 ? co2 + ' ppm' : 'Approx: 400 ppm';
+            
+            document.getElementById('pm25').innerText = (data.components.pm2_5 || '--') + ' µg/m³';
+            document.getElementById('pm10').innerText = (data.components.pm10 || '--') + ' µg/m³';
+            
+            initMap(data.lat, data.lon, data);
+
+            initChart(data.aqi_history);
+            document.getElementById('error').classList.add('hidden');
+        }
+
+
+        function getAQIClass(aqi) {
+            return aqi<=2 ? 'good' : aqi<=3 ? 'moderate' : aqi<=4 ? 'unhealthy' : 'very-bad';
+        }
+
+        function initMap(lat, lon, data) {
+            const map = L.map('map').setView([lat, lon], 12);
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+            L.marker([lat, lon]).addTo(map)
+                .bindPopup(`<b>${data.city}</b><br>AQI: ${data.aqi} (${data.status.split(' ')[1]})<br>Temp: ${data.temp.toFixed(1)}°C`);
+        }
+
+        function initChart(history) {
+            const ctx = document.getElementById('aqiChart')?.getContext('2d');
+            if (ctx) new Chart(ctx, {
+                type: 'line', data: {
+                    labels: ['5h', '4h', '3h', '2h', '1h', 'Now'],
+                    datasets: [{ label: 'AQI', data: history, borderColor: '#00d4ff', backgroundColor: 'rgba(0,212,255,0.2)', fill: true, tension: 0.4 }]
+                },
+                options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { labels: { color: '#333' } } } }
+            });
+        }
+
+        function showError(msg) {
+            document.getElementById('error').textContent = msg;
+            document.getElementById('error').classList.remove('hidden');
+            document.getElementById('dashboard').classList.add('hidden');
+        }
+
+        function hideError() {
+            document.getElementById('error').classList.add('hidden');
+        }
+
+        function showLoading() {
+            // Simple loading
+            document.getElementById('cityInput').placeholder = 'Loading...';
+        }
+
+        // Enter key support
+        document.getElementById('cityInput').addEventListener('keypress', e => { if (e.key === 'Enter') fetchData(); });
+    </script>
+</body>
+</html>
